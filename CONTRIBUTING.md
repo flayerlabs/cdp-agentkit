@@ -1,150 +1,110 @@
-# CDP Agentkit Contributing Guide
-Thank you for your interest in contributing to CDP Agentkit! We welcome all contributions, no matter how big or small. Some of the ways you can contribute include:
-- Adding new actions to the core package
-- Updating existing Langchain Toolkits or adding new Langchain Toolkits to support new tools
-- Creating new AI frameworks extensions
-- Adding tests and improving documentation
+# AgentKit Contributing Guide
 
-## Development
+Thank you for your interest in contributing to AgentKit! We welcome all contributions, no matter how big or small.
 
-### Prerequisites
-- Python 3.10 or higher
-- Rust/Cargo installed ([Rust Installation Instructions](https://doc.rust-lang.org/cargo/getting-started/installation.html))
-- Poetry for package management and tooling
-  - [Poetry Installation Instructions](https://python-poetry.org/docs/#installation)
+## Repository Structure
 
-`cdp-langchain` also requires a [CDP API Key](https://portal.cdp.coinbase.com/access/api).
+The AgentKit repository is organized as two [monorepos](https://vercel.com/docs/vercel-platform/glossary#monorepo), one for Python and one for TypeScript. The TypeScript side is organized as a [multi-package workspace](https://vercel.com/docs/vercel-platform/glossary#multi-package-workspace) and is managed with [Turborepo](https://turbo.build/repo/docs), while the Python side is simply a collection of Python packages. A Python package is a single subfolder with a `pyproject.toml` file, along with related code and files that are published together to PyPI, whereas a TypeScript [package](https://vercel.com/docs/vercel-platform/glossary#package) is a single subfolder with a `package.json` and related code that is published to NPM. For example, the `typescript/agentkit` subfolder is a TypeScript package, and the `python/coinbase-agentkit` subfolder is a Python package.
 
-### Set-up
+Note that not all AgentKit packages have both Python and TypeScript implementations. This is okay, and we expect some level of drift between the languages. If you'd like to add a TypeScript variant of a package that only has a Python variant (or vice versa), that would be a great and welcome contribution!
 
-Clone the repo by running:
+See this section for tips on developing in our monorepo: [Monorepo Development Tips](#monorepo-development-tips)
 
-```bash
-git clone git@github.com:coinbase/cdp-agentkit.git
-```
-
-## Adding an Action to Agentkit Core
-- Actions are defined in `./cdp_agentkit_core/actions` module. See `./cdp_agentkit_core/actions/mint_nft.py` for an example.
-- Actions are created by subclassing `CdpAction`
-  E.g.
-```python
-class DeployNftAction(CdpAction):
-    """Deploy NFT action."""
-
-    name: str = "mint_nft"
-    description: str = MINT_NFT_PROMPT
-    args_schema: type[BaseModel] | None = MintNftInput
-    func: Callable[..., str] = mint_nft
-```
-
-### Components of an Agentic Action
-- `name` - Name of the action.
-- `description` - A string that will provide the AI Agent with context on what the function does and a natural language description of the input.
-  - E.g. 
-```python
-MINT_NFT_PROMPT = """
-This tool will mint an NFT (ERC-721) to a specified destination address onchain via a contract invocation. It takes the contract address of the NFT onchain and the destination address onchain that will receive the NFT as inputs."""
-```
-- `arg_schema` - A Pydantic Model that defines the input argument schema for the action.
-  - E.g.
-```python
-class MintNftInput(BaseModel):
-    """Input argument schema for mint NFT action."""
-
-    contract_address: str = Field(
-        ...,
-        description="The contract address of the NFT (ERC-721) to mint, e.g. `0x036CbD53842c5426634e7929541eC2318f3dCF7e`",
-    )
-    destination: str = Field(
-        ...,
-        description="The destination address that will receieve the NFT onchain, e.g. `0x036CbD53842c5426634e7929541eC2318f3dCF7e`",
-    )
-```
-- `func` - A function (or Callable class) that executes the action.
-  - E.g.
-```python
-def mint_nft(wallet: Wallet, contract_address: str, destination: str) -> str:
-    """Mint an NFT (ERC-721) to a specified destination address onchain via a contract invocation.
-
-    Args:
-        wallet (Wallet): The wallet to trade the asset from.
-        contract_address (str): The contract address of the NFT (ERC-721) to mint, e.g. `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
-        destination (str): The destination address that will receieve the NFT onchain, e.g. `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
-
-    Returns:
-        str: A message containing the NFT mint details.
-
-    """
-    mint_args = {"to": destination, "quantity": "1"}
-
-    mint_invocation = wallet.invoke_contract(
-        contract_address=contract_address, method="mint", args=mint_args
-    ).wait()
-
-    return f"Minted NFT from contract {contract_address} to address {destination} on network {wallet.network_id}.\nTransaction hash for the mint: {mint_invocation.transaction.transaction_hash}\nTransaction link for the mint: {mint_invocation.transaction.transaction_link}"
-```
-
-## Adding an Agentic Action to Langchain Toolkit
-1. Ensure the action is implemented in `cdp-agentkit-core` and in a released version.
-2. Update the `cdp-agentkit-core` dependency to the latest version.
-3. Add the action to the list of tools in the `CdpToolkit` class documentation.
-
-## Adding an Agentic Action to the Twitter Toolkit
-1. Ensure the action is implemented in `cdp-agentkit-core/actions/social/twitter`.
-2. Add a wrapper method to `TwitterApiWrapper` in `./twitter_langchain/twitter_api_wrapper.py`
-   - E.g.
-```python
-    def post_tweet_wrapper(self, tweet: str) -> str:
-        """Post tweet to Twitter.
-
-        Args:
-            client (tweepy.Client): The tweepy client to use.
-            tweet (str): The text of the tweet to post to twitter. Tweets can be maximum 280 characters.
-
-        Returns:
-            str: A message containing the result of the post action and the tweet.
-
-        """
-
-        return post_tweet(client=self.client, tweet=tweet)
-```
-3. Add call to the wrapper in `TwitterApiWrapper.run` in `./twitter_langchain/twitter_api_wrapper.py`
-   - E.g.
-```python
-        if mode == "post_tweet":
-            return self.post_tweet_wrapper(**kwargs)
+Here's a high-level overview of the repository structure:
 
 ```
-4. Add the action to the list of available tools in the `TwitterToolkit` in `./twitter_langchain/twitter_toolkit.py`
-   - E.g.
-```python
-        actions: List[Dict] = [
-            {
-                "mode": "post_tweet",
-                "name": "post_tweet",
-                "description": POST_TWEET_PROMPT,
-                "args_schema": PostTweetInput,
-            },
-        ]
+agentkit/
+├── typescript/
+│   ├── agentkit/
+│   ├── create-onchain-agent/
+│   ├── framework-extensions/
+│   │   ├── langchain/
+│   │   ├── vercel-ai-sdk/
+│   │   └── model-context-protocol/
+│   └── examples/
+│       ├── langchain-cdp-chatbot/
+│       ├── langchain-farcaster-chatbot/
+│       ├── langchain-privy-chatbot/
+│       ├── langchain-solana-chatbot/
+│       ├── langchain-twitter-chatbot/
+│       ├── model-context-protocol-cdp-server/
+│       └── vercel-ai-sdk-cdp-chatbot/
+├── python/
+│   ├── coinbase-agentkit/
+│   ├── create-onchain-agent/
+│   ├── framework-extensions/
+│   │   ├── langchain/
+│   │   └── openai-agents-sdk/
+│   └── examples/
+│       ├── langchain-cdp-chatbot/
+│       ├── langchain-twitter-chatbot/
+│       └── openai-agents-sdk-cdp-chatbot/
 ```
-5. Update `TwitterToolkit` documentation
-    - Add the action to the list of tools
-    - Add any additional ENV requirements
 
-## Development Tools
-### Formatting
-`make format`
+## Language-Specific Guides
 
-### Linting
-- Check linter
-`make lint`
+For an in-depth guide on how to set up your developer environment and add an agentic action, see the following language-specific guides:
 
-- Fix linter errors
-`make lint-fix`
+- [Python Development Guide](./CONTRIBUTING-PYTHON.md)
+- [TypeScript Development Guide](./CONTRIBUTING-TYPESCRIPT.md)
 
-### Unit Testing
-- Run unit tests
-`make test`
+## Contributing Workflow
 
-## Changelog
-- For new features and bug fixes, please add a new changelog entry to the `CHANGELOG.md` file in the appropriate packages and include that in your Pull Request.
+1. **Optional: Start with an Issue**
+
+Whether you are reporting a bug or requesting a new feature, it's always best to check if someone else has already opened an issue for it! If the bug or feature is small and you'd like to take a crack at it, go ahead and skip this step.
+
+2. **Fork the Repository**
+
+Fork the repository by clicking the "Fork" button in the top right corner of the repository page. This will create a copy of the repository in your GitHub account. Then, clone your forked repository to your local machine and create a branch for your changes.
+
+3. **Development Workflow**
+
+These are the high level steps to contribute changes:
+
+- Setup your development environment
+- Implement your change
+- Test your change manually, and include unit tests if applicable
+- Write docs for your change
+- Update the changelog
+
+These steps are highly dependent on the language you're working in, so check out the [language-specific guides](#language-specific-guides) for the language you're working in.
+
+4. **Pull Request Process**
+
+Once you have your changes ready, there are a few more steps to open a PR and get it merged:
+
+- Fill out the PR template completely with as much detail as possible
+  - Ideally, include screenshots or videos of the changes in action
+- Link related issues, if any
+- Ensure all CI checks are passing
+
+5. **PR Review Expectations**
+
+Once your PR is open, you can expect an initial response acknowledging receipt of the PR within 1 day, and an initial review within 1 day from a maintainer assigned to your PR. Once all comments are addressed and a maintainer has approved the PR, it will be merged by the maintainer and included in the next release.
+
+Current list of maintainers:
+
+- [@John-peterson-coinbase](https://github.com/John-peterson-coinbase)
+- [@stat](https://github.com/stat)
+- [@rohan-agarwal-coinbase](https://github.com/rohan-agarwal-coinbase)
+- [@0xRAG](https://github.com/0xRAG)
+- [@yuga-cb](https://github.com/yuga-cb)
+
+## Getting Help
+
+If you're stuck, there are a few ways to get help:
+
+- Search existing issues
+- Reach out to the team in our [Discord community](https://discord.com/channels/1220414409550336183/1304126107876069376)
+- Create a new issue
+
+Thank you for contributing to AgentKit!
+
+## Monorepo Development Tips
+
+Here are some common issues you might run into when developing in our monorepo and how to resolve them:
+
+| Issue                                               | Resolution                                                                                                                 |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Python imports are not resolving in VSCode / Cursor | Try opening the package folder in a new window. For example, `cd python/coinbase-agentkit` and then `code .` or `cursor .` |
